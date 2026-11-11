@@ -3,12 +3,14 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-session'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { mkdir, rmdir, stat } from 'node:fs/promises'
+import { availableParallelism } from 'node:os'
 import { dirname, join } from 'node:path'
 import { key, latestAssignment, latestReport, liveTicket, runningAssignment, threadKey, waitsForPerson } from '../core/index.ts'
 import type { AssessmentOutcome, Assignment, EngineForExecutor, Execution, Executor, Mandate, PolicyEffect, Ticket, TicketInput, Trigger }
   from '../core/index.ts'
 import type { Machine } from '../deployment.ts'
 import { runAsWorker, verifyDirectory } from '../infra/environment.ts'
+import { LIMITS } from '../limits.ts'
 import type { Settings } from '../policy.ts'
 import type { Store } from '../app/store.ts'
 import { Later, type Effects } from '../app/effects.ts'
@@ -26,6 +28,15 @@ export const workerSessionId = (ticketId: string): string => `worker-${ticketId}
 export const ticketOfSession = (sessionId: string): string | undefined => sessionId.startsWith('worker-') ? sessionId.slice('worker-'.length) : undefined
 /** Maximum runtime for a workspace prepare command. */
 const PREPARE_TIMEOUT_MS = 10 * 60_000
+/**
+ * How many workers may run at once. The stored `maxWorkers` is a ceiling, not a fixed crew:
+ * one core stays with the orchestrator, and the pool never exceeds the schema limit.
+ */
+export function workerCapacity(configured: number): number {
+  const machine = Math.max(LIMITS.maxWorkers.min, availableParallelism() - 1)
+  const ceiling = Math.min(LIMITS.maxWorkers.max, Math.max(LIMITS.maxWorkers.min, configured))
+  return Math.min(ceiling, machine)
+}
 /** Maximum transient retry attempts for a launch or worker turn, and the initial backoff before resuming a turn. */
 const TRANSIENT_TRIES = 3, TRANSIENT_BACKOFF_MS = 15_000
 /** How long a worker's background work may run on after its turn ended before it is stopped and the worker reported waiting. */
@@ -227,7 +238,7 @@ export class DshExecutor implements Executor {
   /** Registers the `launch` and `delivery` effect handlers; both are held (concurrency limit 0) while processing is paused. */
   constructor(private readonly host: ExecutorHost) {
     this.slots = new WorkerSlots(() => host.store.tickets.open().filter(ticket => this.running(ticket)).map(ticket => ticket.id),
-      () => host.store.settings().executor.maxWorkers)
+      () => workerCapacity(host.store.settings().executor.maxWorkers))
     // Each launch reserves a worker slot so launches run concurrently while slots are free.
     host.effects.handle('launch', payload => this.launchQueued(payload), { limit: () => host.paused() ? 0 : this.slots.launches(),
       retry: [5000, 300_000] })

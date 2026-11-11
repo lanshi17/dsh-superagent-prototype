@@ -106,9 +106,11 @@
                 config:
                   provider: spawn
                   toolName: subagent
-                  modelSelection: true
-                  modelDiscovery: true
+                  modelSelectionSettings: true
                   agentPreset: standard
+                  agentOptions:
+                    provider: commandcode
+                    model: deepseek/deepseek-v4.1-flash
           - id: tool-todo
             name: '@deepseek-ai/dsh-tool-todo'
             config:
