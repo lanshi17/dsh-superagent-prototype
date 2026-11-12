@@ -2,7 +2,7 @@
 import type { Context } from '@deepseek-ai/cordis'
 import type { Agent } from '@deepseek-ai/dsh-agent'
 import { z } from 'zod'
-import { UserError, followupOwners, key, reasonText, type Decision, type DecisionKind, type EngineForMainSession, type EngineForPeople }
+import { UserError, followupOwners, key, reasonText, type Decision, type DecisionKind, type Engine, type EngineForMainSession, type EngineForPeople }
   from '../../core/index.ts'
 import { IM_WORDS, NOTE_WORDS, wordCount } from '../../infra/text.ts'
 import { AssessmentSchema, EvalReadSchema, WorktreeNameSchema, type MasterAssessor } from '../assessment.ts'
@@ -12,6 +12,7 @@ import { readResource, type MainResourceHost, type ResourceHost } from '../resou
 import type { Sessions } from '../sessions.ts'
 import type { Settings } from '../settings.ts'
 import type { Store } from '../store.ts'
+import type { Portal } from '../portal.ts'
 import { AcknowledgementSchema, readTool, tool, type Tool } from './tool.ts'
 
 const RoutingNoteSchema = z.string().trim()
@@ -19,7 +20,8 @@ const RoutingNoteSchema = z.string().trim()
   .describe(`Optional routing background or explicit human constraint, at most ${NOTE_WORDS} words. Never add implementation instructions or replace the original source.`)
 export interface MainToolsHost {
   readonly context: Context
-  readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note'> & EngineForPeople
+  readonly portal: Portal
+  readonly engine: Pick<EngineForMainSession, 'decide' | 'attach' | 'reply' | 'requestStatus' | 'note'> & Pick<Engine, 'receive'> & EngineForPeople
   readonly store: Pick<Store, 'tickets' | 'triggers' | 'threads' | 'atomic' | 'replyStatus' | 'settings'>
   readonly prompts: Pick<Prompts, 'preview' | 'save'>
   readonly sessions: Pick<Sessions, 'status' | 'notify' | 'delivery' | 'modelRetry'>
@@ -158,6 +160,68 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     readTool('Read one page of a resource the resource parameter lists, such as the ticket list or a ticket. Follow next_offset, and next_resource where a page names one.',
       false, (resource, offset, limit, signal) => readResource(resources, resource, offset, limit, undefined, signal)),
     routeTool(host),
+    tool({
+      name: 'booth_portal_plan',
+      description: 'Plan a task for a local trigger.',
+      schema: z.object({ conversation_id: z.string().min(1), task_id: z.string().min(1).max(100), instruction: z.string().min(1).max(10000),
+        depends_on: z.array(z.string().min(1)).max(20).default([]) }).strict(),
+      execute: async args => {
+        const conversation = host.portal.forTrigger(args.conversation_id)
+        return { conversation_id: conversation.id, task: host.portal.plan(conversation.id, args.task_id, args.instruction, args.depends_on) }
+      },
+    }),
+    tool({
+      name: 'booth_portal_conversation',
+      description: 'Find the portal conversation for a local human trigger.',
+      schema: z.object({ trigger_id: z.string().min(1) }).strict(),
+      execute: async args => host.portal.forTrigger(args.trigger_id),
+    }),
+    tool({
+      name: 'booth_portal_reply',
+      description: 'Send a portal reply to the user of a conversation.',
+      schema: z.object({ conversation_id: z.string().min(1), text: z.string().trim().min(1).max(20000) }).strict(),
+      execute: async args => {
+        const conversation = host.portal.get(args.conversation_id)
+        if (!conversation) throw new Error('unknown conversation')
+        const reply = host.engine.reply({ purpose: 'answer', triggerId: conversation.lastTriggerId || conversation.id, text: args.text })
+        await host.sendReplies()
+        return { status: host.store.replyStatus(reply.id) ?? reply.status }
+      },
+    }),
+    tool({
+      name: 'booth_portal_dispatch',
+      description: 'Dispatch a task.',
+      schema: z.object({ conversation_id: z.string().min(1), task_id: z.string().min(1), worktree_name: WorktreeNameSchema }).strict(),
+      execute: async args => {
+        const task = host.quietly(() => host.portal.dispatch(args.conversation_id, args.task_id, args.worktree_name, host.engine))
+        host.requestPass()
+        const ticket = task.ticketId && host.store.tickets.get(task.ticketId)
+        return { task, ...(ticket ? { ticket: ticketCard(ticket) } : {}) }
+      },
+    }),
+    tool({
+      name: 'booth_portal_forward',
+      description: 'Forward a local user message to a portal worker.',
+      schema: z.object({ conversation_id: z.string().min(1), task_id: z.string().min(1), trigger_id: z.string().min(1) }).strict(),
+      execute: async args => {
+        const task = host.quietly(() => host.portal.forward(args.conversation_id, args.task_id, args.trigger_id, host.engine))
+        host.requestPass()
+        return task
+      },
+    }),
+    tool({
+      name: 'booth_portal_tasks',
+      description: 'Read a booth conversation’s tasks and tickets.',
+      schema: z.object({ conversation_id: z.string().min(1) }).strict(),
+      execute: async args => {
+        const conversation = host.portal.get(args.conversation_id)
+        if (!conversation) throw new Error('unknown conversation')
+        return { conversation_id: conversation.id, tasks: conversation.tasks.map(task => {
+          const ticket = task.ticketId && host.store.tickets.get(task.ticketId)
+          return { ...task, ...(ticket ? { ticket: ticketCard(ticket) } : {}) }
+        }) }
+      },
+    }),
     tool({
       name: 'orchestrator_ticket_retry',
       description: 'Start a new assignment on an explicit human request to retry a ticket whose worker reported failed or blocked, or whose input was not delivered; the stalled one ends.',
