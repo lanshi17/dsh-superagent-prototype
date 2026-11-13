@@ -40,11 +40,11 @@ export class Portal {
     return this.store.atomic(() => {
       const trigger = this.store.triggers.get(triggerId)
       const disposition = this.store.triggers.disposition(triggerId)
-      if (!trigger || trigger.source !== 'local' || !trigger.human || !disposition || disposition.filtered || !trigger.threads[0] || !allowedSender(this.store.settings(), trigger.actor)) {
-        throw new Error('portal conversation needs an admitted local human message')
+      if (!trigger || !['local', 'weixin'].includes(trigger.source) || !trigger.human || !disposition || disposition.filtered || !trigger.threads[0] || !allowedSender(this.store.settings(), trigger.actor)) {
+        throw new Error('portal conversation needs an admitted local or WeChat human message')
       }
       const thread = trigger.threads[0]
-      if (thread.source !== 'local' || trigger.meta.portalTask) throw new Error('not a console conversation')
+      if (thread.source !== trigger.source || trigger.meta.portalTask) throw new Error('not a portal conversation')
       const index = threads(thread.id, trigger.actor.id)
       const existing = this.store.get(index)
       if (existing) {
@@ -132,7 +132,7 @@ export class Portal {
       if (task.ticketId) return task
       const origin = this.store.triggers.get(conversationId)
       const disposition = this.store.triggers.disposition(conversationId)
-      if (!origin || origin.source !== 'local' || !origin.human || !disposition || disposition.filtered || !allowedSender(this.store.settings(), origin.actor)) throw new Error('portal conversation needs an admitted local human message')
+      if (!origin || !['local', 'weixin'].includes(origin.source) || !origin.human || !disposition || disposition.filtered || !allowedSender(this.store.settings(), origin.actor)) throw new Error('portal conversation needs an admitted local or WeChat human message')
       for (const dependency of task.dependsOn) {
         const prerequisite = conversation.tasks.find(item => item.id === dependency)
         const ticket = prerequisite?.ticketId && this.store.tickets.get(prerequisite.ticketId)
@@ -146,7 +146,7 @@ export class Portal {
       }
       const id = `portal-${key(conversationId, taskId)}`
       const thread = `portal-task-${key(conversationId, taskId)}`
-      const trigger = { ...origin, id, threads: [{ source: 'local', id: thread }], at: new Date().toISOString(),
+      const trigger = { ...origin, id, threads: [{ source: origin.source, id: thread }], at: new Date().toISOString(),
         text: task.instruction, channel: undefined, meta: { ...origin.meta, portalConversation: conversationId, portalTask: taskId } }
       const received = engine.receive(trigger)
       if (received !== 'stored' && received !== 'duplicate') throw new Error('the task was rejected by the source')
@@ -167,7 +167,7 @@ export class Portal {
       const original = this.store.triggers.get(triggerId)!
       const id = `portal-input-${key(conversationId, taskId, triggerId)}`
       const thread = `portal-input-${key(conversationId, taskId, triggerId)}`
-      const trigger = { ...original, id, threads: [{ source: 'local', id: thread }], channel: undefined,
+      const trigger = { ...original, id, threads: [{ source: original.source, id: thread }], channel: undefined,
         meta: { ...original.meta, portalConversation: conversationId, portalTask: taskId, portalOriginalTrigger: triggerId } }
       const received = engine.receive(trigger)
       if (received === 'filtered') throw new Error('the message was rejected by the source')

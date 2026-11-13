@@ -55,4 +55,6 @@ export const KV = {
   feishu: { chats: record<Record<string, boolean>>('feishu-chats'), history: family<string, [chat: string]>('feishu-history:'),
     topics: family<Record<string, string>, [chat: string]>('feishu-history-threads:'),
     seen: family<string[], [thread: string]>('thread-seen:'), initialized: family<boolean, [thread: string]>('thread-initialized:') },
+  /** WeChat iLink Source: long-poll cursor and last reply context token per direct-message user. */
+  weixin: { cursor: record<string>('weixin-get-updates-buffer'), contexts: record<Record<string, string>>('weixin-context-tokens') },
 }

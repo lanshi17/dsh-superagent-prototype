@@ -162,7 +162,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     routeTool(host),
     tool({
       name: 'booth_portal_plan',
-      description: 'Plan a task for a local trigger.',
+      description: 'Plan a portal task.',
       schema: z.object({ conversation_id: z.string().min(1), task_id: z.string().min(1).max(100), instruction: z.string().min(1).max(10000),
         depends_on: z.array(z.string().min(1)).max(20).default([]) }).strict(),
       execute: async args => {
@@ -172,7 +172,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     }),
     tool({
       name: 'booth_portal_conversation',
-      description: 'Find the portal conversation for a local human trigger.',
+      description: 'Find a local or WeChat portal conversation.',
       schema: z.object({ trigger_id: z.string().min(1) }).strict(),
       execute: async args => host.portal.forTrigger(args.trigger_id),
     }),
@@ -201,7 +201,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     }),
     tool({
       name: 'booth_portal_forward',
-      description: 'Forward a local user message to a portal worker.',
+      description: 'Forward a portal follow-up to a worker.',
       schema: z.object({ conversation_id: z.string().min(1), task_id: z.string().min(1), trigger_id: z.string().min(1) }).strict(),
       execute: async args => {
         const task = host.quietly(() => host.portal.forward(args.conversation_id, args.task_id, args.trigger_id, host.engine))
