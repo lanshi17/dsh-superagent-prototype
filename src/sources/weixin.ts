@@ -26,7 +26,6 @@ export interface IlinkClient {
   updates(cursor: string, signal?: AbortSignal): Promise<{ msgs: unknown[]; get_updates_buf?: string }>
   send(message: { userId: string; contextToken: string; messageId: string; text: string }, signal?: AbortSignal): Promise<void>
 }
-
 /** Small iLink text client matching zhishi's endpoint and header configuration. */
 export function createIlinkClient(options: { token: string; baseUrl?: string; fetch?: typeof fetch }): IlinkClient {
   const base = new URL(options.baseUrl ?? 'https://ilinkai.weixin.qq.com')
