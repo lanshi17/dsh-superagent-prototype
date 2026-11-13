@@ -181,4 +181,3 @@ export async function runWeixin(ctx: SourceContext, stateDir: string, signal: Ab
     } finally { clearInterval(disable); signal.removeEventListener('abort', abort) }
   }
 }
-
