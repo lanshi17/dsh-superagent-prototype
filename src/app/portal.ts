@@ -1,6 +1,6 @@
 /** Durable portal conversations and their worker-ticket associations. */
 import { family } from '../kv.ts'
-import { key, latestAssignment, ticketOutcome, type Engine } from '../core/index.ts'
+import { key, latestAssignment, ticketOutcome, type Engine, type Trigger } from '../core/index.ts'
 import { allowedSender } from '../policy.ts'
 import { ticketCard } from './cards.ts'
 import type { Store } from './store.ts'
@@ -10,6 +10,18 @@ export interface PortalConversation { id: string; createdAt: string; updatedAt: 
 const conversations = family<PortalConversation, [id: string]>('booth-portal-conversation:')
 const threads = family<string, [thread: string, actor: string]>('booth-portal-thread:')
 const owners = family<{ conversationId: string; taskId: string }, [ticketId: string]>('booth-portal-ticket:')
+
+/**
+ * The key a conversation is looked up by. A Feishu direct chat is one conversation, but the
+ * Source threads every message under its own id unless it replies to a topic; keying by that id
+ * would start a new conversation per message. Groups keep their per-topic threads.
+ */
+const portalThread = (trigger: Trigger): string => {
+  const thread = trigger.threads[0]!
+  return trigger.source === 'feishu' && trigger.meta.direct === true
+    ? `feishu:${String(trigger.meta.chatId ?? thread.id)}`
+    : thread.id
+}
 
 /** The portal's associations share the orchestrator's transactional SQLite database. */
 export class Portal {
@@ -45,7 +57,7 @@ export class Portal {
       }
       const thread = trigger.threads[0]
       if (thread.source !== trigger.source || trigger.meta.portalTask) throw new Error('not a portal conversation')
-      const index = threads(thread.id, trigger.actor.id)
+      const index = threads(portalThread(trigger), trigger.actor.id)
       const existing = this.store.get(index)
       if (existing) {
         const conversation = this.get(existing)

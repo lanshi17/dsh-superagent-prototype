@@ -143,15 +143,22 @@ it('connects the real console Source to the portal and returns its reply to the 
   }
 })
 
-it('accepts an admitted Feishu message as a portal conversation', async () => {
+it('accepts a Feishu message and keeps one conversation per direct chat', async () => {
   const { startRuntime, feishu } = await import('./fixtures/host.ts')
   const h = await startRuntime()
   try {
-    const trigger = feishu('9', '@dsh-booth 你好')
-    expect(h.runtime.receive(trigger)).toBe('stored')
+    const first = feishu('9', '你好', { chat_type: 'p2p', mentions: [] })
+    expect(h.runtime.receive(first)).toBe('stored')
     await h.runtime.idle()
-    const conversation = await h.runTool(h.runtime.masterId, 'booth_portal_conversation', { trigger_id: trigger.id })
-    expect(conversation.id).toBe(trigger.id)
-    expect((await h.runTool(h.runtime.masterId, 'booth_portal_reply', { conversation_id: trigger.id, text: '你好，我是团队负责人。' })).status).toBe('sent')
+    const run = (name: string, args: unknown) => h.runTool(h.runtime.masterId, name, args)
+    const conversation = await run('booth_portal_conversation', { trigger_id: first.id })
+    expect(conversation.id).toBe(first.id)
+    expect((await run('booth_portal_reply', { conversation_id: conversation.id, text: '你好，我是团队负责人。' })).status).toBe('sent')
+    const second = feishu('10', '继续', { chat_type: 'p2p', mentions: [] })
+    expect(h.runtime.receive(second)).toBe('stored')
+    await h.runtime.idle()
+    const same = await run('booth_portal_conversation', { trigger_id: second.id })
+    expect(same.id).toBe(first.id)
+    expect(same.lastTriggerId).toBe(second.id)
   } finally { await h.stop() }
 })
