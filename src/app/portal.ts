@@ -40,8 +40,8 @@ export class Portal {
     return this.store.atomic(() => {
       const trigger = this.store.triggers.get(triggerId)
       const disposition = this.store.triggers.disposition(triggerId)
-      if (!trigger || !['local', 'weixin'].includes(trigger.source) || !trigger.human || !disposition || disposition.filtered || !trigger.threads[0] || !allowedSender(this.store.settings(), trigger.actor)) {
-        throw new Error('portal conversation needs an admitted local or WeChat human message')
+      if (!trigger || !['local', 'weixin', 'feishu'].includes(trigger.source) || !trigger.human || !disposition || disposition.filtered || !trigger.threads[0] || !allowedSender(this.store.settings(), trigger.actor)) {
+        throw new Error('portal conversation needs an admitted local, WeChat or Feishu human message')
       }
       const thread = trigger.threads[0]
       if (thread.source !== trigger.source || trigger.meta.portalTask) throw new Error('not a portal conversation')
@@ -132,7 +132,7 @@ export class Portal {
       if (task.ticketId) return task
       const origin = this.store.triggers.get(conversationId)
       const disposition = this.store.triggers.disposition(conversationId)
-      if (!origin || !['local', 'weixin'].includes(origin.source) || !origin.human || !disposition || disposition.filtered || !allowedSender(this.store.settings(), origin.actor)) throw new Error('portal conversation needs an admitted local or WeChat human message')
+      if (!origin || !['local', 'weixin', 'feishu'].includes(origin.source) || !origin.human || !disposition || disposition.filtered || !allowedSender(this.store.settings(), origin.actor)) throw new Error('portal conversation needs an admitted local, WeChat or Feishu human message')
       for (const dependency of task.dependsOn) {
         const prerequisite = conversation.tasks.find(item => item.id === dependency)
         const ticket = prerequisite?.ticketId && this.store.tickets.get(prerequisite.ticketId)

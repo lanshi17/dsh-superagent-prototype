@@ -142,3 +142,16 @@ it('connects the real console Source to the portal and returns its reply to the 
     await h.stop()
   }
 })
+
+it('accepts an admitted Feishu message as a portal conversation', async () => {
+  const { startRuntime, feishu } = await import('./fixtures/host.ts')
+  const h = await startRuntime()
+  try {
+    const trigger = feishu('9', '@dsh-booth 你好')
+    expect(h.runtime.receive(trigger)).toBe('stored')
+    await h.runtime.idle()
+    const conversation = await h.runTool(h.runtime.masterId, 'booth_portal_conversation', { trigger_id: trigger.id })
+    expect(conversation.id).toBe(trigger.id)
+    expect((await h.runTool(h.runtime.masterId, 'booth_portal_reply', { conversation_id: trigger.id, text: '你好，我是团队负责人。' })).status).toBe('sent')
+  } finally { await h.stop() }
+})

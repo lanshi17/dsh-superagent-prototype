@@ -172,7 +172,7 @@ export function mainTools(host: MainToolsHost, agent: Agent): Tool[] {
     }),
     tool({
       name: 'booth_portal_conversation',
-      description: 'Find a local or WeChat portal conversation.',
+      description: 'Find a local, WeChat or Feishu portal conversation.',
       schema: z.object({ trigger_id: z.string().min(1) }).strict(),
       execute: async args => host.portal.forTrigger(args.trigger_id),
     }),
